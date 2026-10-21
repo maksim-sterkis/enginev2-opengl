@@ -117,7 +117,7 @@ int main() {
     return -1;
   }
   glfwMakeContextCurrent(window);
-  glfwSwapInterval(1); // Enable VSync by default to prevent thermal throttling
+  glfwSwapInterval(0); // Unlimited FPS by default (VSync is selectable in the debug window)
   std::cout << "Display refresh rate: " << get_window_refresh_rate(window) << " Hz" << std::endl;
 #ifdef __APPLE__
   MacVSync mac_vsync;
@@ -164,10 +164,17 @@ int main() {
 
   double last_time = glfwGetTime();
 
-  bool mouse_locked = false;
+  bool mouse_locked = false; // mouse starts unlocked
   bool p_pressed = false;
+  bool esc_was_down = false;
   double last_x = 400, last_y = 300;
   bool first_mouse = true;
+
+  auto set_mouse_lock = [&](bool locked) {
+      mouse_locked = locked;
+      glfwSetInputMode(window, GLFW_CURSOR, locked ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+      first_mouse = true;
+  };
 
   if (glfwRawMouseMotionSupported()) {
       glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
@@ -179,29 +186,34 @@ int main() {
     float delta_time = static_cast<float>(current_time - last_time);
     last_time = current_time;
 
-    // Toggle Mouse Lock with P
-    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
-        if (!p_pressed) {
-            mouse_locked = !mouse_locked;
-            glfwSetInputMode(window, GLFW_CURSOR, mouse_locked ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
-            first_mouse = true;
-            p_pressed = true;
-        }
-    } else {
-        p_pressed = false;
-    }
-
-    // Unlock mouse with ESC
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        if (mouse_locked) {
-            mouse_locked = false;
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            first_mouse = true;
+    // ESC toggles the exit menu: opening it frees the mouse, closing it re-locks the mouse
+    bool esc_down = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+    if (esc_down && !esc_was_down) {
+        if (render_state.exit_menu_open) {
+            render_state.exit_menu_open = false;
+            render_state.request_mouse_lock = true;
+        } else {
+            render_state.exit_menu_open = true;
+            set_mouse_lock(false);
         }
     }
+    esc_was_down = esc_down;
 
-    // Camera Input
-    if (mouse_locked) {
+    // Toggle Mouse Lock with P (not while the exit menu is open)
+    bool p_down = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
+    if (p_down && !p_pressed && !render_state.exit_menu_open) {
+        set_mouse_lock(!mouse_locked);
+    }
+    p_pressed = p_down;
+
+    // Lock requests coming from the UI (e.g. the Resume button)
+    if (render_state.request_mouse_lock) {
+        render_state.request_mouse_lock = false;
+        set_mouse_lock(true);
+    }
+
+    // Camera look: only while the mouse is locked and the exit menu is closed
+    if (mouse_locked && !render_state.exit_menu_open) {
         double xpos, ypos;
         glfwGetCursorPos(window, &xpos, &ypos);
 
@@ -230,16 +242,20 @@ int main() {
         front.y = sin(glm::radians(render_state.camera.pitch));
         front.z = sin(glm::radians(render_state.camera.yaw)) * cos(glm::radians(render_state.camera.pitch));
         render_state.camera.front = glm::normalize(front);
+    }
 
+    // Camera movement: works whether or not the mouse is locked (but not while the exit menu is open)
+    if (!render_state.exit_menu_open) {
         float velocity = render_state.camera.speed * delta_time;
+        glm::vec3 right = glm::normalize(glm::cross(render_state.camera.front, render_state.camera.up));
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
             render_state.camera.position += render_state.camera.front * velocity;
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
             render_state.camera.position -= render_state.camera.front * velocity;
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-            render_state.camera.position -= glm::normalize(glm::cross(render_state.camera.front, render_state.camera.up)) * velocity;
+            render_state.camera.position -= right * velocity;
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-            render_state.camera.position += glm::normalize(glm::cross(render_state.camera.front, render_state.camera.up)) * velocity;
+            render_state.camera.position += right * velocity;
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
             render_state.camera.position += render_state.camera.up * velocity;
         if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
@@ -249,13 +265,18 @@ int main() {
     // Start UI Frame
     ui_new_frame();
 
+    // Update entity motion (positions += velocities * dt)
+    auto motion_start = std::chrono::steady_clock::now();
+    ecs_update_motion(&ecs, delta_time);
+    render_state.motion_ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - motion_start).count();
+
     glfwGetFramebufferSize(window, &render_state.window_width, &render_state.window_height);
 
     // Draw main frame
     draw_frame(&render_state, &ecs, &asset_pool);
 
     // Draw UI
-    ui_draw_debug_window(delta_time, window, &render_state);
+    ui_draw_debug_window(delta_time, window, &render_state, &ecs);
     ui_render();
 
     glfwSwapBuffers(window);

@@ -2,6 +2,7 @@
 
 struct GLFWwindow;
 struct RenderState; // Forward declaration
+struct ECS;
 
 // Initialize the ImGui context and backends
 void ui_init(GLFWwindow* window);
@@ -16,4 +17,4 @@ void ui_new_frame();
 void ui_render();
 
 // Draw our custom debug/metrics window
-void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* state);
+void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* state, ECS* ecs);

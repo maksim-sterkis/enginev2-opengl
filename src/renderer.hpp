@@ -45,7 +45,12 @@ struct RenderState {
 
     bool enable_backface_culling = true;
     bool enable_frustum_culling = true;
-    bool vsync_enabled = true; // swap interval 1 + frame pacing to the monitor refresh rate
+    bool vsync_enabled = false; // false = unlimited FPS; true = swap interval 1 + display-link pacing
+
+    // UI <-> main loop communication
+    bool exit_menu_open = false;     // the ESC menu is showing
+    bool request_mouse_lock = false; // UI asks main to lock the mouse (e.g. Resume button)
+    float motion_ms = 0.0f;          // CPU time spent integrating entity velocities last frame
     RenderStats stats;
 };
 

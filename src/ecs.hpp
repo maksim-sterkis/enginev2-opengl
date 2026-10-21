@@ -16,6 +16,7 @@ struct ECS {
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> rotations; // euler angles in degrees
     std::vector<glm::vec3> scales;
+    std::vector<glm::vec3> velocities;
     std::vector<uint32_t> render_mesh_ids;
     std::vector<uint32_t> render_texture_ids;
 
@@ -38,3 +39,6 @@ void ecs_destroy_entity(ECS* ecs, uint32_t id);
 // Call after changing positions/rotations/scales/texture ids of an entity so
 // its cached instance data is rebuilt on the next frame.
 inline void ecs_mark_dirty(ECS* ecs, uint32_t id) { ecs->transform_dirty[id] = 1; }
+void ecs_randomize_velocities(ECS* ecs, float min_speed = 2.0f, float max_speed = 12.0f);
+void ecs_stop_velocities(ECS* ecs);
+void ecs_update_motion(ECS* ecs, float delta_time);
