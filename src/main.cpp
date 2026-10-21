@@ -9,6 +9,12 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <string>
+#include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#include <climits>
+#endif
 #ifdef __APPLE__
 #include <CoreVideo/CoreVideo.h>
 #include <condition_variable>
@@ -96,6 +102,21 @@ static int get_window_refresh_rate(GLFWwindow* window) {
 // Main Entry Point
 // ---------------------------------------------------------
 int main() {
+#ifdef __APPLE__
+  // When launched from a .app bundle, cwd is "/" - switch to Contents/Resources
+  // so relative "assets/" and "shaders/" paths resolve.
+  {
+    char exe[PATH_MAX]; uint32_t sz = sizeof(exe);
+    if (_NSGetExecutablePath(exe, &sz) == 0) {
+      std::string path(exe);
+      size_t pos = path.find(".app/Contents/MacOS/");
+      if (pos != std::string::npos) {
+        std::string res = path.substr(0, pos) + ".app/Contents/Resources";
+        if (chdir(res.c_str()) != 0) std::cerr << "Failed to chdir to " << res << std::endl;
+      }
+    }
+  }
+#endif
   // Initialize GLFW
   if (!glfwInit()) {
     std::cerr << "Failed to initialize GLFW" << std::endl;

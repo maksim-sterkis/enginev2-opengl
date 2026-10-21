@@ -64,3 +64,17 @@ if(APPLE)
     find_library(COREVIDEO_LIBRARY CoreVideo)
     target_link_libraries(EngineV2 PRIVATE ${OPENGL_LIBRARY} ${COREVIDEO_LIBRARY})
 endif()
+
+# Bundle assets/shaders into a .app on macOS
+if(APPLE)
+    set_target_properties(EngineV2 PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "EngineV2"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.maksimsterkis.enginev2"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${ENGINE_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${ENGINE_VERSION}"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/Info.plist.in")
+    add_custom_command(TARGET EngineV2 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/assets $<TARGET_BUNDLE_CONTENT_DIR:EngineV2>/Resources/assets
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/shaders $<TARGET_BUNDLE_CONTENT_DIR:EngineV2>/Resources/shaders)
+endif()
