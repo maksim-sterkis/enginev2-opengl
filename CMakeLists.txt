@@ -7,6 +7,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Fetch GLFW from GitHub
 include(FetchContent)
+# Don't hit the network to update already-downloaded dependencies on reconfigure
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 FetchContent_Declare(
     glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -31,14 +33,11 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/g-truc/glm.git
     GIT_TAG master
 )
-FetchContent_GetProperties(glm)
-if(NOT glm_POPULATED)
-    FetchContent_Populate(glm)
-endif()
+FetchContent_MakeAvailable(glm)
 
 # Get path to ImGui and GLM
-FetchContent_GetProperties(imgui SOURCE_DIR IMGUI_DIR)
-FetchContent_GetProperties(glm SOURCE_DIR GLM_DIR)
+set(IMGUI_DIR ${imgui_SOURCE_DIR})
+set(GLM_DIR ${glm_SOURCE_DIR})
 
 set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui.cpp
@@ -59,8 +58,9 @@ add_executable(EngineV2 ${SOURCES})
 target_include_directories(EngineV2 PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends ${GLM_DIR})
 target_link_libraries(EngineV2 PRIVATE glfw)
 
-# For macOS explicit OpenGL linkage
+# For macOS explicit OpenGL and CoreVideo (hardware VSync via CVDisplayLink) linkage
 if(APPLE)
     find_library(OPENGL_LIBRARY OpenGL)
-    target_link_libraries(EngineV2 PRIVATE ${OPENGL_LIBRARY})
+    find_library(COREVIDEO_LIBRARY CoreVideo)
+    target_link_libraries(EngineV2 PRIVATE ${OPENGL_LIBRARY} ${COREVIDEO_LIBRARY})
 endif()

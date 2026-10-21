@@ -1,14 +1,23 @@
 # EngineV2
 
-A custom, high-performance 3D graphics engine written in C++ and OpenGL.
+A custom, high-performance 3D graphics engine written in C++17 and OpenGL 3.3 Core, built around strict Data-Oriented Design (DOD) principles.
 
 ## Core Features
 
-- **3D Graphics Pipeline**: Fully programmable vertex and fragment shaders executing perspective and view matrix transformations in real-time.
-- **Hardware-Accelerated Asset Loading**: Seamlessly parses `.obj` 3D models (via `tinyobjloader`) and loads `.png`/`.jpg` textures (via `stb_image`) directly into GPU Vertex/Element Array Buffers and `sampler2D` textures.
-- **Developer HUD**: Integrated `Dear ImGui` providing real-time engine controls, system metrics, and state monitoring without pausing execution.
-- **Professional Performance Metrics**: Tracks frame distribution over a 1,000-frame rolling window, actively displaying the 99th and 99.9th percentile frame times (1% and 0.1% lows) alongside 100ms average FPS to diagnose thermal throttling or GC stutters.
-- **First-Person Flight Camera**: Unlocked 6DOF camera (W/A/S/D/Space/Shift) supporting `GLFW_RAW_MOUSE_MOTION` hardware overrides to bypass OS cursor acceleration for zero-latency aiming.
-- **Dynamic Viewports**: Real-time toggles to swap between dynamic window FOVs and forced cinematic 16:9 aspect ratios. 
-- **Thermal Safety**: Dynamic V-Sync and swap interval toggles to prevent uncapped frame loops from triggering OS-level thermal throttling on modern silicon.
-- **Data-Oriented Design (DOD)**: Strict adherence to DOD principles. Object-Oriented Programming (OOP) paradigms (like classes, inheritance, and encapsulation) are explicitly forbidden in favor of flat arrays, POD structs, and cache-friendly data transformation pipelines.
+- **3D Graphics Pipeline & Reverse-Z Depth**: Programmable vertex and fragment shaders with Reverse-Z depth buffering (`glDepthRange(1.0, 0.0)`, `GL_GREATER`) for near-infinite draw distances (`100,000` units) without z-fighting.
+- **Compact Instanced Rendering (`InstanceData`)**: Packs per-instance transforms into 48 bytes (`vec4` position + texture layer, `vec4` rotation quaternion, `vec4` scale) instead of 64-byte `mat4` matrices, reconstructing world transforms on the GPU inside the vertex shader and streaming updates via buffer orphaning (`GL_STREAM_DRAW`).
+- **Dirty-Flagged Transform Cache & O(1) ECS Pool**: Struct-of-Arrays (SoA) entity store with O(1) swap-remove destruction, free-list ID recycling, and cached GPU `InstanceData` that only recomputes quaternions/transforms when an entity is marked dirty (`ecs_mark_dirty`).
+- **Frustum & Back-Face Culling**: Gribb–Hartmann 6-plane frustum extraction tested against per-mesh bounding spheres before sorting or uploading instance buffers, paired with hardware `GL_CULL_FACE` (`GL_BACK`, `GL_CCW`).
+- **2D Texture Arrays & Asset Deduplication**: Consolidates loaded textures into a single `GL_TEXTURE_2D_ARRAY` (`sampler2DArray`) with mipmapping, anisotropic filtering, automatic bilinear resampling when dimensions differ, and path-based mesh/texture deduplication so all textured entities batch by mesh alone.
+- **Hardware VBlank Synchronization (macOS `CVDisplayLink`)**: Uses Apple's `CoreVideo` `CVDisplayLink` hardware vertical blank interrupt alongside `glfwSwapInterval` to lock frame pacing to the physical display refresh rate (60 Hz, 120 Hz ProMotion, or external monitors) with zero busy-waiting.
+- **Developer HUD & Frame Telemetry**: Integrated `Dear ImGui` panel displaying 100ms rolling average FPS, 1% and 0.1% low FPS (over a 1,000-frame window), visible/total entity counts, CPU stage timings (`build`, `upload`, `draw submit`), live culling toggles, viewport modes (Dynamic FOV vs. Forced 16:9), and input state.
+- **First-Person Flight Camera**: Unlocked 6DOF camera (`W`/`A`/`S`/`D`/`Space`/`Left Shift`, toggle mouse lock with `P`, unlock/exit prompt with `ESC`) using `GLFW_RAW_MOUSE_MOTION` for unaccelerated mouse look.
+- **Data-Oriented Design (DOD)**: Flat Struct-of-Arrays (`ECS`), POD structs, persistent scratch buffers to eliminate per-frame heap allocations, and cache-friendly transformation pipelines.
+
+## Building & Running
+
+```sh
+cmake -S . -B build
+cmake --build build -j 8
+./build/EngineV2
+```

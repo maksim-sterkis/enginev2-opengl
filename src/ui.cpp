@@ -91,12 +91,25 @@ void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* sta
     static int fps_mode = 1; // 0 = Unlimited, 1 = VSync
     if (ImGui::Combo("FPS Mode", &fps_mode, "Unlimited\0VSync\0")) {
         glfwSwapInterval(fps_mode);
+        state->vsync_enabled = (fps_mode == 1);
     }
     
     int vmode = (int)state->viewport_mode;
     if (ImGui::Combo("Viewport Mode", &vmode, "Dynamic FOV\0Forced 16:9\0")) {
         state->viewport_mode = (ViewportMode)vmode;
     }
+
+    ImGui::Checkbox("Back-face Culling", &state->enable_backface_culling);
+    ImGui::Checkbox("Frustum Culling", &state->enable_frustum_culling);
+
+    ImGui::Separator();
+
+    // Render stats (CPU-side timings; GPU work is asynchronous)
+    const RenderStats& rs = state->stats;
+    ImGui::Text("Entities: %d visible / %d total", rs.visible_entities, rs.total_entities);
+    ImGui::Text("CPU build (cull/sort/matrices): %.3f ms", rs.build_ms);
+    ImGui::Text("CPU upload: %.3f ms", rs.upload_ms);
+    ImGui::Text("CPU draw submit: %.3f ms", rs.draw_ms);
 
     ImGui::Separator();
     

@@ -6,6 +6,91 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <cmath>
+#include <algorithm>
+#include <chrono>
+#include <thread>
+#ifdef __APPLE__
+#include <CoreVideo/CoreVideo.h>
+#include <condition_variable>
+#include <mutex>
+
+// Hardware VBlank synchronizer using macOS CVDisplayLink.
+// Fires on the display hardware's exact vertical blank interrupt (60 Hz, 120 Hz ProMotion,
+// external displays, etc.) with zero busy-waiting or software clock drift.
+struct MacVSync {
+    CVDisplayLinkRef link = nullptr;
+    std::mutex mtx;
+    std::condition_variable cv;
+    uint64_t vblank_counter = 0;
+
+    static CVReturn callback(CVDisplayLinkRef, const CVTimeStamp*, const CVTimeStamp*,
+                             CVOptionFlags, CVOptionFlags*, void* ctx) {
+        auto* self = static_cast<MacVSync*>(ctx);
+        {
+            std::lock_guard<std::mutex> lock(self->mtx);
+            self->vblank_counter++;
+        }
+        self->cv.notify_all();
+        return kCVReturnSuccess;
+    }
+
+    void init() {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        if (CVDisplayLinkCreateWithActiveCGDisplays(&link) == kCVReturnSuccess && link) {
+            CVDisplayLinkSetOutputCallback(link, &MacVSync::callback, this);
+            CVDisplayLinkStart(link);
+        }
+        #pragma clang diagnostic pop
+    }
+
+    void wait_for_vblank() {
+        if (!link) return;
+        std::unique_lock<std::mutex> lock(mtx);
+        uint64_t start = vblank_counter;
+        cv.wait_for(lock, std::chrono::milliseconds(50), [&] { return vblank_counter != start; });
+    }
+
+    void shutdown() {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        if (link) {
+            CVDisplayLinkStop(link);
+            CVDisplayLinkRelease(link);
+            link = nullptr;
+        }
+        #pragma clang diagnostic pop
+    }
+};
+#endif
+
+// Refresh rate (Hz) of the monitor that contains most of the window.
+// Falls back to the primary monitor, then to 60.
+static int get_window_refresh_rate(GLFWwindow* window) {
+    int wx, wy, ww, wh;
+    glfwGetWindowPos(window, &wx, &wy);
+    glfwGetWindowSize(window, &ww, &wh);
+
+    int count = 0;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+    GLFWmonitor* best = nullptr;
+    long best_overlap = -1;
+    for (int i = 0; i < count; i++) {
+        int mx, my;
+        glfwGetMonitorPos(monitors[i], &mx, &my);
+        const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+        if (!mode) continue;
+        long ox = std::max(0, std::min(wx + ww, mx + mode->width) - std::max(wx, mx));
+        long oy = std::max(0, std::min(wy + wh, my + mode->height) - std::max(wy, my));
+        if (ox * oy > best_overlap) {
+            best_overlap = ox * oy;
+            best = monitors[i];
+        }
+    }
+    if (!best) best = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = best ? glfwGetVideoMode(best) : nullptr;
+    return (mode && mode->refreshRate > 0) ? mode->refreshRate : 60;
+}
 
 // ---------------------------------------------------------
 // Main Entry Point
@@ -23,6 +108,7 @@ int main() {
 #ifdef __APPLE__
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
+  glfwWindowHint(GLFW_DEPTH_BITS, 32); // Request maximum depth precision for Reverse-Z
 
   GLFWwindow *window = glfwCreateWindow(800, 600, "EngineV2", NULL, NULL);
   if (!window) {
@@ -32,6 +118,11 @@ int main() {
   }
   glfwMakeContextCurrent(window);
   glfwSwapInterval(1); // Enable VSync by default to prevent thermal throttling
+  std::cout << "Display refresh rate: " << get_window_refresh_rate(window) << " Hz" << std::endl;
+#ifdef __APPLE__
+  MacVSync mac_vsync;
+  mac_vsync.init();
+#endif
 
   // Initialize GLAD
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
@@ -58,7 +149,7 @@ int main() {
 
   // Spawn 10,000 entities for a stress test
   int grid_size = 100;
-  float spacing = 2.0f;
+  float spacing = 10.0f; // Expanded spacing to demonstrate 100,000 unit draw distance
   for (int x = -grid_size / 2; x < grid_size / 2; x++) {
       for (int z = -grid_size / 2; z < grid_size / 2; z++) {
           uint32_t ent = ecs_create_entity(&ecs);
@@ -66,8 +157,8 @@ int main() {
           ecs.render_texture_ids[ent] = crate_tex;
           
           // Add some cool sine-wave vertical variance
-          float y_pos = (sin(x * 0.2f) + cos(z * 0.2f)) * 2.0f;
-          ecs.positions[ent] = glm::vec3(x * spacing, y_pos - 5.0f, z * spacing); // Move down a bit so we spawn above them
+          float y_pos = (sin(x * 0.2f) + cos(z * 0.2f)) * 10.0f;
+          ecs.positions[ent] = glm::vec3(x * spacing, y_pos - 15.0f, z * spacing); // Move down a bit so we spawn above them
       }
   }
 
@@ -169,10 +260,20 @@ int main() {
 
     glfwSwapBuffers(window);
     glfwPollEvents();
+
+    // Hardware VBlank synchronization on macOS via CVDisplayLink
+    if (render_state.vsync_enabled) {
+#ifdef __APPLE__
+        mac_vsync.wait_for_vblank();
+#endif
+    }
   }
 
   // Shutdown UI
   ui_shutdown();
+#ifdef __APPLE__
+  mac_vsync.shutdown();
+#endif
 
   glfwTerminate();
   return 0;

@@ -20,6 +20,15 @@ struct Camera {
     float sensitivity = 0.1f;
 };
 
+// Per-frame CPU-side render statistics (filled in by draw_frame)
+struct RenderStats {
+    int total_entities = 0;
+    int visible_entities = 0;
+    float build_ms = 0.0f;   // cull + sort + matrix building
+    float upload_ms = 0.0f;  // glBufferSubData
+    float draw_ms = 0.0f;    // draw call submission (CPU side only; GPU runs async)
+};
+
 struct RenderState {
     GLuint shader_program;
     GLuint u_view_loc;
@@ -33,7 +42,12 @@ struct RenderState {
     ViewportMode viewport_mode = ViewportMode::DYNAMIC_FOV;
     
     Camera camera;
+
+    bool enable_backface_culling = true;
+    bool enable_frustum_culling = true;
+    bool vsync_enabled = true; // swap interval 1 + frame pacing to the monitor refresh rate
+    RenderStats stats;
 };
 
 void init_renderer(RenderState* state);
-void draw_frame(const RenderState* state, const ECS* ecs, const AssetPool* pool);
+void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool);
