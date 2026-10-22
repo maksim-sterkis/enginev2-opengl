@@ -9,6 +9,45 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+
+static void draw_camera_axis_widget(const Camera& camera) {
+    const ImVec2 cursor = ImGui::GetCursorScreenPos();
+    const ImVec2 center(cursor.x + 27.0f, cursor.y + 24.0f);
+    constexpr float axis_length = 17.0f;
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    draw_list->AddCircle(center, axis_length + 5.0f, IM_COL32(100, 105, 115, 180));
+
+    const glm::vec3 forward = glm::normalize(camera.front);
+    glm::vec3 right = glm::cross(forward, camera.up);
+    if (glm::length(right) < 0.001f) right = glm::vec3(1.0f, 0.0f, 0.0f);
+    else right = glm::normalize(right);
+    const glm::vec3 camera_up = glm::normalize(glm::cross(right, forward));
+
+    const glm::vec3 axes[] = {
+        glm::vec3(1.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f),
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    };
+    const char* labels[] = {"+X", "+Y", "+Z"};
+    const ImU32 colors[] = {
+        IM_COL32(245, 95, 90, 255),
+        IM_COL32(105, 220, 130, 255),
+        IM_COL32(100, 165, 250, 255)
+    };
+
+    for (int i = 0; i < 3; ++i) {
+        const float screen_x = glm::dot(axes[i], right);
+        const float screen_y = -glm::dot(axes[i], camera_up);
+        const ImVec2 end(center.x + screen_x * axis_length,
+                         center.y + screen_y * axis_length);
+        draw_list->AddLine(center, end, colors[i], 2.0f);
+        draw_list->AddCircleFilled(end, 2.5f, colors[i]);
+        draw_list->AddText(ImVec2(end.x + 3.0f, end.y - 7.0f), colors[i], labels[i]);
+    }
+    draw_list->AddCircleFilled(center, 2.0f, IM_COL32(235, 235, 235, 255));
+    ImGui::Dummy(ImVec2(56.0f, 50.0f));
+}
 
 void ui_init(GLFWwindow* window) {
     IMGUI_CHECKVERSION();
@@ -111,6 +150,35 @@ void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* sta
     ImGui::Text("1: Cube Grid    2: Sponza");
     ImGui::Separator();
 
+    ImGui::TextUnformatted("Camera Coordinates (meters)");
+    ImGui::Text("Origin: %s", show_cube_controls ? "world origin" : "Sponza bounds center");
+    if (ImGui::BeginTable("Camera Coordinates", 2, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Position", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Axes", ImGuiTableColumnFlags_WidthFixed, 62.0f);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("X: %+.2f", state->camera.position.x);
+        ImGui::Text("Y: %+.2f", state->camera.position.y);
+        ImGui::Text("Z: %+.2f", state->camera.position.z);
+        ImGui::TableSetColumnIndex(1);
+        draw_camera_axis_widget(state->camera);
+        ImGui::EndTable();
+    }
+    ImGui::Text("Yaw: %+.1f deg    Pitch: %+.1f deg",
+                state->camera.yaw, state->camera.pitch);
+
+    if (ImGui::SmallButton("Copy spawn coordinates")) {
+        char coordinates[192];
+        const char* origin = show_cube_controls ? "world-origin" : "sponza-center";
+        std::snprintf(coordinates, sizeof(coordinates),
+                      "scene=%s origin=%s x=%.3f y=%.3f z=%.3f yaw=%.2f pitch=%.2f",
+                      active_scene_name ? active_scene_name : "unknown", origin,
+                      state->camera.position.x, state->camera.position.y, state->camera.position.z,
+                      state->camera.yaw, state->camera.pitch);
+        ImGui::SetClipboardText(coordinates);
+    }
+    ImGui::Separator();
+
     // Performance: 100ms Rolling Average FPS
     static float display_fps = 0.0f;
     static float accum_time = 0.0f;
@@ -177,6 +245,11 @@ void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* sta
     ImGui::Text("CPU build (cull/sort/matrices): %.3f ms", rs.build_ms);
     ImGui::Text("CPU upload: %.3f ms", rs.upload_ms);
     ImGui::Text("CPU draw submit: %.3f ms", rs.draw_ms);
+    if (state->gpu_scene_time_valid) {
+        ImGui::Text("GPU mesh pass (async): %.3f ms", state->gpu_scene_ms);
+    } else {
+        ImGui::TextUnformatted("GPU mesh pass (async): waiting for sample");
+    }
 
     ImGui::Separator();
 

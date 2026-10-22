@@ -6,8 +6,49 @@
 #include <cmath>
 #include <glm/gtc/quaternion.hpp>
 
+static void poll_gpu_scene_timer(RenderState* state) {
+    for (int i = 0; i < GPU_SCENE_TIMER_QUERY_COUNT; ++i) {
+        if (!state->gpu_scene_timer_pending[i]) continue;
+
+        GLint available = GL_FALSE;
+        glGetQueryObjectiv(state->gpu_scene_timer_queries[i], GL_QUERY_RESULT_AVAILABLE, &available);
+        if (!available) continue;
+
+        GLuint64 elapsed_ns = 0;
+        glGetQueryObjectui64v(state->gpu_scene_timer_queries[i], GL_QUERY_RESULT, &elapsed_ns);
+        if (!state->gpu_scene_time_valid ||
+            state->gpu_scene_timer_frame_ids[i] >= state->gpu_scene_timer_latest_frame_id) {
+            state->gpu_scene_ms = static_cast<float>(elapsed_ns) / 1000000.0f;
+            state->gpu_scene_timer_latest_frame_id = state->gpu_scene_timer_frame_ids[i];
+            state->gpu_scene_time_valid = true;
+        }
+        state->gpu_scene_timer_pending[i] = false;
+    }
+}
+
+static int begin_gpu_scene_timer(RenderState* state) {
+    for (int offset = 0; offset < GPU_SCENE_TIMER_QUERY_COUNT; ++offset) {
+        const int slot = (state->gpu_scene_timer_next_slot + offset) % GPU_SCENE_TIMER_QUERY_COUNT;
+        if (state->gpu_scene_timer_pending[slot]) continue;
+
+        state->gpu_scene_timer_frame_ids[slot] = state->gpu_scene_timer_next_frame_id++;
+        state->gpu_scene_timer_next_slot = (slot + 1) % GPU_SCENE_TIMER_QUERY_COUNT;
+        glBeginQuery(GL_TIME_ELAPSED, state->gpu_scene_timer_queries[slot]);
+        return slot;
+    }
+    return -1; // All queries are still in flight; skip this sample instead of blocking.
+}
+
+static void end_gpu_scene_timer(RenderState* state, int slot) {
+    if (slot < 0) return;
+    glEndQuery(GL_TIME_ELAPSED);
+    state->gpu_scene_timer_pending[slot] = true;
+}
+
 void init_renderer(RenderState* state) {
     state->shader_program = create_shader_program("shaders/triangle.vert", "shaders/triangle.frag");
+
+    glGenQueries(GPU_SCENE_TIMER_QUERY_COUNT, state->gpu_scene_timer_queries);
 
     glGenBuffers(1, &state->instance_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, state->instance_vbo);
@@ -23,6 +64,13 @@ void init_renderer(RenderState* state) {
     state->u_proj_loc = glGetUniformLocation(state->shader_program, "u_proj");
 }
 
+void shutdown_renderer(RenderState* state) {
+    if (!state) return;
+    glDeleteQueries(GPU_SCENE_TIMER_QUERY_COUNT, state->gpu_scene_timer_queries);
+    if (state->instance_vbo != 0) glDeleteBuffers(1, &state->instance_vbo);
+    if (state->shader_program != 0) glDeleteProgram(state->shader_program);
+}
+
 void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool) {
     using Clock = std::chrono::steady_clock;
     auto ms_since = [](Clock::time_point t) {
@@ -33,6 +81,7 @@ void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool) {
     RenderStats& stats = state->stats;
     stats = RenderStats{};
     stats.total_entities = (int)ecs->active_entities.size();
+    poll_gpu_scene_timer(state);
 
     glEnable(GL_DEPTH_TEST);
     // Re-assert Reverse-Z in case ImGui or another state machine changes it
@@ -49,13 +98,13 @@ void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool) {
         glDisable(GL_CULL_FACE);
     }
 
-    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     if (state->window_width <= 0 || state->window_height <= 0) {
         stats.build_ms = ms_since(build_start);
         return;
     }
+
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     float aspect = 1.0f;
     if (state->viewport_mode == ViewportMode::DYNAMIC_FOV) {
@@ -154,9 +203,18 @@ void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool) {
     glBindTexture(GL_TEXTURE_2D_ARRAY, pool->texture_array);
 
     uint32_t current_mesh = render_list[0].mesh;
+    int gpu_timer_slot = -1;
+    bool gpu_timer_attempted = false;
     
     auto flush_batch = [&]() {
         if (instances.empty()) return;
+
+        // Start after CPU-side culling/sorting and instance construction so this
+        // measures the GPU mesh pass rather than the CPU frame-building work.
+        if (!gpu_timer_attempted) {
+            gpu_timer_slot = begin_gpu_scene_timer(state);
+            gpu_timer_attempted = true;
+        }
 
         const bool cull_backfaces = state->enable_backface_culling &&
                                     !pool->meshes[current_mesh].double_sided;
@@ -212,6 +270,7 @@ void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool) {
     
     // Flush the final batch
     flush_batch();
+    end_gpu_scene_timer(state, gpu_timer_slot);
 
     // Build time = everything except upload and draw submission
     stats.build_ms = ms_since(build_start) - stats.upload_ms - stats.draw_ms;

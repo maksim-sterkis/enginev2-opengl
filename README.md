@@ -22,9 +22,17 @@ The DMG packaging script opts into a macOS `.app` bundle automatically.
 - **Texture Array Batching**: All textures live in one `GL_TEXTURE_2D_ARRAY` with mipmaps and anisotropic filtering where supported. Entities carry a layer index, so draws batch by mesh only. Meshes and textures are de-duplicated by path.
 - **Entity Motion**: A button gives every cube a random direction and speed (no collisions), and another stops them.
 - **Frame Pacing**: Unlimited FPS by default. VSync mode combines `glfwSwapInterval` with a macOS `CVDisplayLink` wait to hold the display's refresh rate.
-- **Developer HUD**: A stock Dear ImGui window showing average FPS, 1% and 0.1% lows, visible and total entity counts, CPU stage timings (motion, build, upload, draw submit), culling toggles, viewport mode, camera speed and input state.
+- **Developer HUD**: A stock Dear ImGui window showing average FPS, 1% and 0.1% lows, visible and total entity counts, CPU stage timings (motion, build, upload, draw submit), and an asynchronous GPU mesh-pass timing. It also includes culling toggles, viewport mode, camera speed, input state, and a camera coordinate tracker with an axis widget and a button to copy a spawn string.
 - **Flight Camera**: 6DOF movement (`W`/`A`/`S`/`D`/`Space`/`Left Shift`) that works with or without the mouse lock. `P` toggles mouse-look, which uses raw mouse motion. World units are meters; the mouse wheel adjusts speed by 0.5 m/s per notch (0.5 to 50 m/s) when the cursor is not over the HUD. `ESC` opens the exit menu, and pressing it again closes the menu and locks the mouse.
-- **Scene Switching**: The cube grid is the default scene. Press `2` for the textured Sponza atrium or `1` to return; each scene keeps its camera and inactive-scene simulation pauses. Sponza model attribution is in `assets/sponza/ATTRIBUTION.md`.
+- **Scene Switching**: The cube grid is the default scene. Press `2` for the textured Sponza atrium or `1` to return; each scene keeps its camera and inactive-scene simulation pauses. Sponza starts at `(-12, -6, 1)` meters relative to its bounds center, with yaw `-15.5°` and pitch `11.3°`. Sponza model attribution is in `assets/sponza/ATTRIBUTION.md`.
 - **Scene Scale and Materials**: Each cube is 1 m on each side. Sponza's source units are interpreted as centimeters and scaled to meters. Diffuse and opacity maps preserve their aspect ratio and alpha-cutout surfaces render two-sided.
 - **Fixed-Size HUD**: The ImGui HUD keeps its logical dimensions when the window is resized and uses the window's OS content scale for its font atlas.
 - **Data-Oriented Design**: Flat arrays, plain structs, and persistent scratch buffers to avoid per-frame allocations.
+
+## Build a macOS release image
+
+```sh
+scripts/make_dmg.sh v0.2.0
+```
+
+This creates `dist/EngineV2-v0.2.0.dmg`, containing the versioned `EngineV2.app` bundle, assets, and shaders. The script builds in Release mode and uses available local dependency checkouts when possible. The packaged app loads its assets locally and does not need a network connection at launch.

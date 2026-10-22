@@ -4,6 +4,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "assets.hpp"
 #include "ecs.hpp"
+#include <cstdint>
+
+constexpr int GPU_SCENE_TIMER_QUERY_COUNT = 8;
 
 enum class ViewportMode {
     DYNAMIC_FOV,
@@ -52,7 +55,18 @@ struct RenderState {
     bool request_mouse_lock = false; // UI asks main to lock the mouse (e.g. Resume button)
     float motion_ms = 0.0f;          // CPU time spent integrating entity velocities last frame
     RenderStats stats;
+
+    // Asynchronous GPU timer-query ring. Results are polled without stalling the frame.
+    GLuint gpu_scene_timer_queries[GPU_SCENE_TIMER_QUERY_COUNT] = {};
+    bool gpu_scene_timer_pending[GPU_SCENE_TIMER_QUERY_COUNT] = {};
+    uint64_t gpu_scene_timer_frame_ids[GPU_SCENE_TIMER_QUERY_COUNT] = {};
+    uint64_t gpu_scene_timer_next_frame_id = 0;
+    uint64_t gpu_scene_timer_latest_frame_id = 0;
+    int gpu_scene_timer_next_slot = 0;
+    float gpu_scene_ms = 0.0f;
+    bool gpu_scene_time_valid = false;
 };
 
 void init_renderer(RenderState* state);
+void shutdown_renderer(RenderState* state);
 void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool);

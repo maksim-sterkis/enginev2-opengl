@@ -110,16 +110,17 @@ struct SceneState {
     Camera camera;
 };
 
-static Camera make_fitted_camera(const ObjSceneAsset& scene, float world_scale) {
+static Camera make_sponza_start_camera() {
     Camera camera;
-    const glm::vec3 direction = glm::normalize(glm::vec3(0.68f, 0.34f, 0.65f));
-    const glm::vec3 half_extent = (scene.bounds_max - scene.bounds_min) * (0.5f * world_scale);
-    const float radius = std::max(glm::length(half_extent), 1.0f);
-    const float distance = radius / std::sin(glm::radians(22.5f)) * 1.15f;
-    camera.position = direction * distance;
-    camera.front = glm::normalize(-camera.position);
-    camera.yaw = glm::degrees(std::atan2(camera.front.z, camera.front.x));
-    camera.pitch = glm::degrees(std::asin(camera.front.y));
+    camera.position = glm::vec3(-12.0f, -6.0f, 1.0f);
+    camera.yaw = -15.5f;
+    camera.pitch = 11.3f;
+    const float yaw = glm::radians(camera.yaw);
+    const float pitch = glm::radians(camera.pitch);
+    camera.front = glm::normalize(glm::vec3(
+        std::cos(yaw) * std::cos(pitch),
+        std::sin(pitch),
+        std::sin(yaw) * std::cos(pitch)));
     camera.speed = 5.0f; // World units are meters; keep the normal camera speed.
     return camera;
 }
@@ -202,6 +203,7 @@ int main() {
   uint32_t crate_tex = assets_load_texture(&asset_pool, "assets/texture.jpg");
   if (cube_mesh == INVALID_ASSET_ID || crate_tex == INVALID_ASSET_ID) {
       std::cerr << "Failed to load the default cube scene assets." << std::endl;
+      shutdown_renderer(&render_state);
       ui_shutdown();
 #ifdef __APPLE__
       mac_vsync.shutdown();
@@ -216,6 +218,7 @@ int main() {
   if (!assets_load_obj_scene(&asset_pool, "assets/sponza/sponza.obj", render_state.instance_vbo,
                             &sponza_asset, &sponza_error)) {
       std::cerr << "Failed to load the Sponza scene: " << sponza_error << std::endl;
+      shutdown_renderer(&render_state);
       ui_shutdown();
 #ifdef __APPLE__
       mac_vsync.shutdown();
@@ -226,6 +229,7 @@ int main() {
   }
   if (!assets_finalize_texture_uploads(&asset_pool)) {
       std::cerr << "Failed to finalize scene texture uploads." << std::endl;
+      shutdown_renderer(&render_state);
       ui_shutdown();
 #ifdef __APPLE__
       mac_vsync.shutdown();
@@ -238,7 +242,7 @@ int main() {
   // Treat the source OBJ units as centimeters; this produces a palace about 37 m wide.
   constexpr float sponza_scale = 0.01f;
   const glm::vec3 sponza_center = (sponza_asset.bounds_min + sponza_asset.bounds_max) * 0.5f;
-  scenes[1].camera = make_fitted_camera(sponza_asset, sponza_scale);
+  scenes[1].camera = make_sponza_start_camera();
   for (const ObjSubmesh& submesh : sponza_asset.submeshes) {
       const uint32_t ent = ecs_create_entity(&scenes[1].ecs);
       scenes[1].ecs.render_mesh_ids[ent] = submesh.mesh_id;
@@ -416,6 +420,7 @@ int main() {
   }
 
   // Shutdown UI
+  shutdown_renderer(&render_state);
   ui_shutdown();
 #ifdef __APPLE__
   mac_vsync.shutdown();

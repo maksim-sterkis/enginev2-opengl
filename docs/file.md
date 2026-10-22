@@ -9,12 +9,12 @@ main.cpp
   ├─ init window/GL (GLFW, glad) and Dear ImGui (ui.cpp)
   ├─ init_renderer ........ renderer.cpp  → shader.cpp compiles shaders/*
   ├─ assets_load_* ........ assets.cpp    → fills AssetPool (meshes + texture array)
-  ├─ ecs_create_entity .... ecs.cpp       → fills the ECS arrays (cubes)
+  ├─ load scenes .......... cube grid and material-grouped Sponza submeshes
   └─ every frame:
-       input → camera / ESC menu
-       ecs_update_motion ............ ecs.cpp
+       input → active scene / camera / ESC menu
+       ecs_update_motion ............ ecs.cpp (active scene only)
        draw_frame ................... renderer.cpp (cull → batch → upload → draw)
-       ui_draw_debug_window ......... ui.cpp   (reads stats, edits RenderState / ECS)
+       ui_draw_debug_window ......... ui.cpp (HUD, coordinates, CPU/GPU timings)
        swap buffers (+ VSync wait)
 ```
 
@@ -25,16 +25,18 @@ Dependency direction: `main.cpp` uses everything. `renderer` uses `assets` and `
 ### `main.cpp`
 Program entry point and main loop.
 - Creates the GLFW window (OpenGL 3.3 core, 32-bit depth), loads GL through glad, sets the swap interval (unlimited by default).
-- Builds the `RenderState`, `AssetPool` and `ECS`, loads `assets/cube.obj` and `assets/texture.jpg`, and spawns the 100×100 cube grid.
-- Per frame: handles ESC (toggles the exit menu, frees or locks the mouse), `P` (mouse lock), camera look and movement, then runs motion, draws the frame, draws the UI, swaps buffers.
+- Builds the `RenderState`, `AssetPool` and two `SceneState`s. The cube scene loads `assets/cube.obj` and `assets/texture.jpg`, then spawns the 100×100 cube grid. The Sponza scene loads the bundled OBJ/MTL and textures as material-grouped submeshes, recenters its bounds, and scales the source centimeter units to meters.
+- Starts in the cube scene. Key-down presses of `1` and `2` switch between the cube grid and Sponza. Each scene keeps its own camera; only the active scene's simulation updates. Sponza starts at `(-12, -6, 1)` meters from its bounds center, with yaw `-15.5°` and pitch `11.3°`.
+- Per frame: handles scene shortcuts, ESC (toggles the exit menu, frees or locks the mouse), `P` (mouse lock), camera look and movement, then updates the active scene, draws the frame, draws the UI, and swaps buffers.
 - Contains `MacVSync`, a `CVDisplayLink` wrapper used to wait for the display's vertical blank when VSync mode is on, and the refresh-rate helper.
 - Talks to the UI through `RenderState` fields (`exit_menu_open`, `request_mouse_lock`, `vsync_enabled`).
 
 ### `renderer.hpp` / `renderer.cpp`
 Owns rendering state and draws a frame.
-- `RenderState`: shader program and uniform locations, the instance VBO, window size, viewport mode, the `Camera`, culling and VSync flags, UI/main-loop flags, and `RenderStats`.
+- `RenderState`: shader program and uniform locations, the instance VBO, window size, viewport mode, active `Camera`, culling and VSync flags, UI/main-loop flags, CPU `RenderStats`, and an asynchronous GPU timer-query ring.
 - `init_renderer`: compiles the shader program (via `shader.cpp`), allocates the instance buffer, sets up reverse-Z.
-- `draw_frame`: sets depth and cull state, builds the projection/view matrices, extracts the frustum planes, culls entities against mesh bounding spheres, sorts by mesh, rebuilds cached `InstanceData` for dirty entities, uploads the visible instances (orphaning the buffer), and issues one instanced draw per mesh. It also records timings into `RenderStats`.
+- `draw_frame`: sets depth and cull state, builds the projection/view matrices, extracts the frustum planes, culls entities against mesh bounding spheres, sorts by mesh, rebuilds cached `InstanceData` for dirty entities, uploads the visible instances (orphaning the buffer), and issues one instanced draw per mesh. It records CPU timings in `RenderStats`; GPU mesh-pass timings are read from timer queries in later frames so the HUD does not stall waiting for them.
+- `shutdown_renderer`: releases the timer queries, instance buffer and shader program while the GL context is still active.
 
 ### `ecs.hpp` / `ecs.cpp`
 The entity store, as flat Struct-of-Arrays.
@@ -57,7 +59,7 @@ Small helpers: read a file to a string, compile a shader, link a program. Used b
 ### `ui.hpp` / `ui.cpp`
 Dear ImGui setup and the HUD.
 - `ui_init` / `ui_shutdown` / `ui_new_frame` / `ui_render` wrap the ImGui GLFW and OpenGL3 backends.
-- `ui_draw_debug_window`: the metrics window (FPS and lows, culling toggles, entity counts and CPU timings, velocity buttons, camera speed, input state), the mouse-wheel camera speed handling, and the exit menu.
+- `ui_draw_debug_window`: the metrics window (FPS and lows, culling toggles, entity counts, CPU timings and asynchronous GPU timing), camera coordinates relative to the active scene origin, an orientation axis widget, a copy-spawn-coordinates button, cube-scene velocity controls, camera speed, input state, and the exit menu.
 - Reads `RenderState` and `RenderStats`, and can change `RenderState` and the `ECS`.
 
 ### Third-party / generated
@@ -72,7 +74,9 @@ Dear ImGui setup and the HUD.
 ## Assets (`assets/`)
 - `cube.obj`: the unit cube mesh.
 - `texture.jpg`: the cube texture (1024×1024).
+- `sponza/`: bundled Sponza OBJ, MTL, diffuse/opacity textures, and attribution. The model's bounds center is the HUD coordinate origin; its source files and CC BY 3.0 attribution are documented in `sponza/ATTRIBUTION.md`.
 
 ## Build files
 - `CMakeLists.txt`: fetches GLFW, Dear ImGui (docking branch) and GLM with `FetchContent`, compiles everything under `src/` plus the ImGui sources, and links OpenGL and CoreVideo on macOS.
+- `scripts/make_dmg.sh`: makes a Release-mode macOS `.app` and a versioned DMG in `dist/` (for example, `scripts/make_dmg.sh v0.2.0`).
 - `imgui.ini`: ImGui window layout saved at runtime.
