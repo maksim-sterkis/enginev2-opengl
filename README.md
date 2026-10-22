@@ -2,6 +2,8 @@
 
 A custom, high-performance 3D graphics engine written in C++17 and OpenGL 3.3 Core, built around Data-Oriented Design (DOD) principles.
 
+**Latest release:** [EngineV2 v0.2.0](https://github.com/maksim-sterkis/enginev2-opengl/releases/latest)
+
 ## Screenshot
 
 <img width="2940" height="1912" alt="EngineV2 screenshot" src="https://github.com/user-attachments/assets/7f088372-a0a8-45bb-bf1f-c9ac38542a84" />
