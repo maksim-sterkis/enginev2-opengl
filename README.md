@@ -2,6 +2,13 @@
 
 A custom, high-performance 3D graphics engine written in C++17 and OpenGL 3.3 Core, built around Data-Oriented Design (DOD) principles.
 
+
+
+images: 
+
+<img width="2940" height="1912" alt="Screenshot 2026-10-22 at 5 08 59 PM" src="https://github.com/user-attachments/assets/7f088372-a0a8-45bb-bf1f-c9ac38542a84" />
+
+
 ## Build and run on macOS
 
 ```sh
