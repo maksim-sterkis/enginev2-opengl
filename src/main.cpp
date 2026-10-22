@@ -98,6 +98,32 @@ static int get_window_refresh_rate(GLFWwindow* window) {
     return (mode && mode->refreshRate > 0) ? mode->refreshRate : 60;
 }
 
+enum class SceneId : int {
+    CubeGrid = 0,
+    Sponza = 1
+};
+
+struct SceneState {
+    SceneId id = SceneId::CubeGrid;
+    const char* name = "Cube Grid";
+    ECS ecs;
+    Camera camera;
+};
+
+static Camera make_fitted_camera(const ObjSceneAsset& scene, float world_scale) {
+    Camera camera;
+    const glm::vec3 direction = glm::normalize(glm::vec3(0.68f, 0.34f, 0.65f));
+    const glm::vec3 half_extent = (scene.bounds_max - scene.bounds_min) * (0.5f * world_scale);
+    const float radius = std::max(glm::length(half_extent), 1.0f);
+    const float distance = radius / std::sin(glm::radians(22.5f)) * 1.15f;
+    camera.position = direction * distance;
+    camera.front = glm::normalize(-camera.position);
+    camera.yaw = glm::degrees(std::atan2(camera.front.z, camera.front.x));
+    camera.pitch = glm::degrees(std::asin(camera.front.y));
+    camera.speed = 5.0f; // World units are meters; keep the normal camera speed.
+    return camera;
+}
+
 // ---------------------------------------------------------
 // Main Entry Point
 // ---------------------------------------------------------
@@ -161,25 +187,82 @@ int main() {
   AssetPool asset_pool;
   assets_init(&asset_pool);
 
-  ECS ecs;
-  ecs_init(&ecs);
+  SceneState scenes[2];
+  scenes[0].id = SceneId::CubeGrid;
+  scenes[0].name = "Cube Grid";
+  scenes[1].id = SceneId::Sponza;
+  scenes[1].name = "Sponza";
+  ecs_init(&scenes[0].ecs);
+  ecs_init(&scenes[1].ecs);
+  scenes[0].camera = render_state.camera;
+  SceneId active_scene_id = SceneId::CubeGrid;
 
   // Load Default Assets
   uint32_t cube_mesh = assets_load_obj(&asset_pool, "assets/cube.obj", render_state.instance_vbo);
   uint32_t crate_tex = assets_load_texture(&asset_pool, "assets/texture.jpg");
+  if (cube_mesh == INVALID_ASSET_ID || crate_tex == INVALID_ASSET_ID) {
+      std::cerr << "Failed to load the default cube scene assets." << std::endl;
+      ui_shutdown();
+#ifdef __APPLE__
+      mac_vsync.shutdown();
+#endif
+      glfwDestroyWindow(window);
+      glfwTerminate();
+      return -1;
+  }
+
+  ObjSceneAsset sponza_asset;
+  std::string sponza_error;
+  if (!assets_load_obj_scene(&asset_pool, "assets/sponza/sponza.obj", render_state.instance_vbo,
+                            &sponza_asset, &sponza_error)) {
+      std::cerr << "Failed to load the Sponza scene: " << sponza_error << std::endl;
+      ui_shutdown();
+#ifdef __APPLE__
+      mac_vsync.shutdown();
+#endif
+      glfwDestroyWindow(window);
+      glfwTerminate();
+      return -1;
+  }
+  if (!assets_finalize_texture_uploads(&asset_pool)) {
+      std::cerr << "Failed to finalize scene texture uploads." << std::endl;
+      ui_shutdown();
+#ifdef __APPLE__
+      mac_vsync.shutdown();
+#endif
+      glfwDestroyWindow(window);
+      glfwTerminate();
+      return -1;
+  }
+
+  // Treat the source OBJ units as centimeters; this produces a palace about 37 m wide.
+  constexpr float sponza_scale = 0.01f;
+  const glm::vec3 sponza_center = (sponza_asset.bounds_min + sponza_asset.bounds_max) * 0.5f;
+  scenes[1].camera = make_fitted_camera(sponza_asset, sponza_scale);
+  for (const ObjSubmesh& submesh : sponza_asset.submeshes) {
+      const uint32_t ent = ecs_create_entity(&scenes[1].ecs);
+      scenes[1].ecs.render_mesh_ids[ent] = submesh.mesh_id;
+      scenes[1].ecs.render_texture_ids[ent] = submesh.texture_id;
+      scenes[1].ecs.positions[ent] = -sponza_center * sponza_scale;
+      scenes[1].ecs.scales[ent] = glm::vec3(sponza_scale);
+      ecs_mark_dirty(&scenes[1].ecs, ent);
+  }
+  std::cout << "Loaded Sponza: " << sponza_asset.submeshes.size()
+            << " material submeshes, " << asset_pool.texture_layers << " texture layers." << std::endl;
 
   // Spawn 10,000 entities for a stress test
   int grid_size = 100;
   float spacing = 10.0f; // Expanded spacing to demonstrate 100,000 unit draw distance
   for (int x = -grid_size / 2; x < grid_size / 2; x++) {
       for (int z = -grid_size / 2; z < grid_size / 2; z++) {
-          uint32_t ent = ecs_create_entity(&ecs);
-          ecs.render_mesh_ids[ent] = cube_mesh;
-          ecs.render_texture_ids[ent] = crate_tex;
+          uint32_t ent = ecs_create_entity(&scenes[0].ecs);
+          scenes[0].ecs.render_mesh_ids[ent] = cube_mesh;
+          scenes[0].ecs.render_texture_ids[ent] = crate_tex;
+          scenes[0].ecs.scales[ent] = glm::vec3(1.0f); // cube.obj is exactly 1 m on each side
           
           // Add some cool sine-wave vertical variance
           float y_pos = (sin(x * 0.2f) + cos(z * 0.2f)) * 10.0f;
-          ecs.positions[ent] = glm::vec3(x * spacing, y_pos - 15.0f, z * spacing); // Move down a bit so we spawn above them
+          scenes[0].ecs.positions[ent] = glm::vec3(x * spacing, y_pos - 15.0f, z * spacing); // Move down a bit so we spawn above them
       }
   }
 
@@ -188,6 +271,8 @@ int main() {
   bool mouse_locked = false; // mouse starts unlocked
   bool p_pressed = false;
   bool esc_was_down = false;
+  bool one_was_down = false;
+  bool two_was_down = false;
   double last_x = 400, last_y = 300;
   bool first_mouse = true;
 
@@ -219,6 +304,22 @@ int main() {
         }
     }
     esc_was_down = esc_down;
+
+    bool one_down = glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS;
+    bool two_down = glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS;
+    if (!render_state.exit_menu_open) {
+        SceneId requested_scene = active_scene_id;
+        if (one_down && !one_was_down) requested_scene = SceneId::CubeGrid;
+        else if (two_down && !two_was_down) requested_scene = SceneId::Sponza;
+        if (requested_scene != active_scene_id) {
+            scenes[static_cast<int>(active_scene_id)].camera = render_state.camera;
+            active_scene_id = requested_scene;
+            render_state.camera = scenes[static_cast<int>(active_scene_id)].camera;
+            first_mouse = true;
+        }
+    }
+    one_was_down = one_down;
+    two_was_down = two_down;
 
     // Toggle Mouse Lock with P (not while the exit menu is open)
     bool p_down = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
@@ -288,16 +389,19 @@ int main() {
 
     // Update entity motion (positions += velocities * dt)
     auto motion_start = std::chrono::steady_clock::now();
-    ecs_update_motion(&ecs, delta_time);
+    SceneState& active_scene = scenes[static_cast<int>(active_scene_id)];
+    ecs_update_motion(&active_scene.ecs, delta_time);
     render_state.motion_ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - motion_start).count();
 
     glfwGetFramebufferSize(window, &render_state.window_width, &render_state.window_height);
 
     // Draw main frame
-    draw_frame(&render_state, &ecs, &asset_pool);
+    draw_frame(&render_state, &active_scene.ecs, &asset_pool);
 
     // Draw UI
-    ui_draw_debug_window(delta_time, window, &render_state, &ecs);
+    ui_draw_debug_window(delta_time, window, &render_state, &active_scene.ecs,
+                         active_scene.name, active_scene_id == SceneId::CubeGrid);
+    active_scene.camera = render_state.camera;
     ui_render();
 
     glfwSwapBuffers(window);

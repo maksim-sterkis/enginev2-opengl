@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
 project(EngineV2 LANGUAGES C CXX)
 
+# Developer builds produce a directly runnable executable. Release packaging opts into
+# the macOS .app bundle layout through scripts/make_dmg.sh.
+option(ENGINE_BUILD_APP_BUNDLE "Build EngineV2 as a macOS application bundle" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -65,8 +69,8 @@ if(APPLE)
     target_link_libraries(EngineV2 PRIVATE ${OPENGL_LIBRARY} ${COREVIDEO_LIBRARY})
 endif()
 
-# Bundle assets/shaders into a .app on macOS
-if(APPLE)
+# Bundle assets/shaders into a .app for macOS distribution builds.
+if(APPLE AND ENGINE_BUILD_APP_BUNDLE)
     set_target_properties(EngineV2 PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_BUNDLE_NAME "EngineV2"

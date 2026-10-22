@@ -52,6 +52,11 @@ void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool) {
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    if (state->window_width <= 0 || state->window_height <= 0) {
+        stats.build_ms = ms_since(build_start);
+        return;
+    }
+
     float aspect = 1.0f;
     if (state->viewport_mode == ViewportMode::DYNAMIC_FOV) {
         glViewport(0, 0, state->window_width, state->window_height);
@@ -121,6 +126,9 @@ void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool) {
     // Frustum cull before sorting and before touching any instance data
     for (auto ent : ecs->active_entities) {
         uint32_t mesh = ecs->render_mesh_ids[ent];
+        if (mesh >= pool->meshes.size() || ecs->render_texture_ids[ent] >= (uint32_t)pool->texture_layers) {
+            continue;
+        }
         if (state->enable_frustum_culling) {
             const glm::vec3& s = ecs->scales[ent];
             float max_scale = std::max(std::abs(s.x), std::max(std::abs(s.y), std::abs(s.z)));
@@ -149,6 +157,11 @@ void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool) {
     
     auto flush_batch = [&]() {
         if (instances.empty()) return;
+
+        const bool cull_backfaces = state->enable_backface_culling &&
+                                    !pool->meshes[current_mesh].double_sided;
+        if (cull_backfaces) glEnable(GL_CULL_FACE);
+        else glDisable(GL_CULL_FACE);
         
         auto upload_start = Clock::now();
         glBindBuffer(GL_ARRAY_BUFFER, state->instance_vbo);
@@ -188,6 +201,10 @@ void draw_frame(RenderState* state, ECS* ecs, const AssetPool* pool) {
             d.pos_layer = glm::vec4(ecs->positions[ent], (float)ecs->render_texture_ids[ent]);
             d.rot = glm::vec4(q.x, q.y, q.z, q.w);
             d.scale = glm::vec4(ecs->scales[ent], 0.0f);
+            const uint32_t texture_id = ecs->render_texture_ids[ent];
+            d.uv_transform = texture_id < pool->texture_uv_transforms.size()
+                ? pool->texture_uv_transforms[texture_id]
+                : glm::vec4(1.0f, 1.0f, 0.0f, 0.0f);
             ecs->transform_dirty[ent] = 0;
         }
         instances.push_back(ecs->instance_cache[ent]);

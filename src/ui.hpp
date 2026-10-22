@@ -17,4 +17,5 @@ void ui_new_frame();
 void ui_render();
 
 // Draw our custom debug/metrics window
-void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* state, ECS* ecs);
+void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* state, ECS* ecs,
+                          const char* active_scene_name, bool show_cube_controls);

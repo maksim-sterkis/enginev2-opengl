@@ -4,9 +4,11 @@ layout (location = 1) in vec2 aTexCoord;
 layout (location = 2) in vec4 aPosLayer; // xyz = world position, w = texture array layer
 layout (location = 3) in vec4 aRot;      // quaternion (x, y, z, w)
 layout (location = 4) in vec4 aScale;    // xyz = scale
+layout (location = 5) in vec4 aUvTransform; // xy = fitted UV scale, zw = fitted UV offset
 
 out vec2 TexCoord;
 flat out float TexLayer;
+flat out vec4 UvTransform;
 
 uniform mat4 u_view;
 uniform mat4 u_proj;
@@ -24,4 +26,5 @@ void main()
     gl_Position = u_proj * u_view * vec4(world, 1.0);
     TexCoord = aTexCoord;
     TexLayer = aPosLayer.w;
+    UvTransform = aUvTransform;
 }

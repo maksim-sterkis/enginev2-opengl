@@ -3,12 +3,13 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 
-// GPU-facing per-instance data (48 bytes instead of a 64-byte mat4).
-// The vertex shader rebuilds the transform from these.
+// GPU-facing per-instance data. The vertex shader rebuilds the transform and
+// carries the texture's aspect-preserving UV rectangle with each instance.
 struct InstanceData {
     glm::vec4 pos_layer; // xyz = world position, w = texture array layer
     glm::vec4 rot;       // quaternion (x, y, z, w)
     glm::vec4 scale;     // xyz = scale, w unused (keeps 16-byte alignment)
+    glm::vec4 uv_transform; // xy = fitted UV scale, zw = fitted UV offset
 };
 
 struct ECS {

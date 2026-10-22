@@ -13,7 +13,7 @@ for d in glfw imgui glm; do
   [ -d "build/_deps/$d-src" ] && DEPS="$DEPS -DFETCHCONTENT_SOURCE_DIR_$(echo $d | tr a-z A-Z)=$PWD/build/_deps/$d-src"
 done
 cmake -S . -B "$BUILD" $DEPS -DCMAKE_BUILD_TYPE=Release -DENGINE_VERSION="${VERSION#v}" \
-  -DCMAKE_OSX_ARCHITECTURES="$(uname -m)"
+  -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" -DENGINE_BUILD_APP_BUNDLE=ON
 cmake --build "$BUILD" -j
 
 rm -rf "$STAGE"; mkdir -p "$STAGE" dist

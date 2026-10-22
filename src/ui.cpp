@@ -14,12 +14,25 @@ void ui_init(GLFWwindow* window) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    float content_scale_x = 1.0f;
+    float content_scale_y = 1.0f;
+    glfwGetWindowContentScale(window, &content_scale_x, &content_scale_y);
+    float dpi_scale = (content_scale_x + content_scale_y) * 0.5f;
+    if (!std::isfinite(dpi_scale) || dpi_scale <= 0.0f) dpi_scale = 1.0f;
+    dpi_scale = std::clamp(dpi_scale, 0.5f, 4.0f);
+    ImFontConfig font_config;
+    font_config.SizePixels = 13.0f * dpi_scale;
+    io.Fonts->AddFontDefault(&font_config);
+    // Keep layout in logical window coordinates while using a DPI-sized glyph atlas.
+    io.FontGlobalScale = 1.0f / dpi_scale;
     // Keyboard navigation is intentionally OFF: the camera uses WASD/Space/Shift and Space
     // would otherwise activate whichever widget was last clicked.
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
 
-    // Stock Dear ImGui look
+    // Keep widget geometry in fixed logical units; the font atlas alone follows OS content scale.
     ImGui::StyleColorsDark();
+    constexpr float ui_style_scale = 1.0f;
+    ImGui::GetStyle().ScaleAllSizes(ui_style_scale);
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -82,7 +95,8 @@ static void draw_exit_menu(GLFWwindow* window, RenderState* state) {
     ImGui::EndPopup();
 }
 
-void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* state, ECS* ecs) {
+void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* state, ECS* ecs,
+                          const char* active_scene_name, bool show_cube_controls) {
     ImGuiIO& io = ImGui::GetIO();
 
     // Camera speed via mouse wheel, but never while the cursor is over a UI window
@@ -93,6 +107,9 @@ void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* sta
     }
 
     ImGui::Begin("Engine Metrics & Input");
+    ImGui::Text("Scene: %s", active_scene_name ? active_scene_name : "Unknown");
+    ImGui::Text("1: Cube Grid    2: Sponza");
+    ImGui::Separator();
 
     // Performance: 100ms Rolling Average FPS
     static float display_fps = 0.0f;
@@ -163,19 +180,20 @@ void ui_draw_debug_window(float delta_time, GLFWwindow* window, RenderState* sta
 
     ImGui::Separator();
 
-    // Simulation
-    if (ImGui::Button("Randomize Cube Velocities")) {
-        ecs_randomize_velocities(ecs);
+    // Simulation controls only apply to the cube-grid scene.
+    if (show_cube_controls) {
+        if (ImGui::Button("Randomize Cube Velocities")) {
+            ecs_randomize_velocities(ecs);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Stop Cubes")) {
+            ecs_stop_velocities(ecs);
+        }
+        ImGui::Separator();
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Stop Cubes")) {
-        ecs_stop_velocities(ecs);
-    }
-
-    ImGui::Separator();
 
     // Camera
-    ImGui::SliderFloat("Camera Speed", &state->camera.speed, 0.5f, 50.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::SliderFloat("Camera Speed (m/s)", &state->camera.speed, 0.5f, 50.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
 
     ImGui::Separator();
 
