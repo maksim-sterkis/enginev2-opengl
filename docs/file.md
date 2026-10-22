@@ -79,4 +79,5 @@ Dear ImGui setup and the HUD.
 ## Build files
 - `CMakeLists.txt`: fetches GLFW, Dear ImGui (docking branch) and GLM with `FetchContent`, compiles everything under `src/` plus the ImGui sources, and links OpenGL and CoreVideo on macOS.
 - `scripts/make_dmg.sh`: makes a Release-mode macOS `.app` and a versioned DMG in `dist/` (for example, `scripts/make_dmg.sh v0.2.0`).
+- `docs/build.md`: macOS developer build and release-image instructions.
 - `imgui.ini`: ImGui window layout saved at runtime.

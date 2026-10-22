@@ -2,22 +2,9 @@
 
 A custom, high-performance 3D graphics engine written in C++17 and OpenGL 3.3 Core, built around Data-Oriented Design (DOD) principles.
 
+## Screenshot
 
-
-images: 
-
-<img width="2940" height="1912" alt="Screenshot 2026-10-22 at 5 08 59 PM" src="https://github.com/user-attachments/assets/7f088372-a0a8-45bb-bf1f-c9ac38542a84" />
-
-
-## Build and run on macOS
-
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENGINE_BUILD_APP_BUNDLE=OFF
-cmake --build build -j8
-./build/EngineV2
-```
-
-The DMG packaging script opts into a macOS `.app` bundle automatically.
+<img width="2940" height="1912" alt="EngineV2 screenshot" src="https://github.com/user-attachments/assets/7f088372-a0a8-45bb-bf1f-c9ac38542a84" />
 
 ## Core Features
 
@@ -36,10 +23,4 @@ The DMG packaging script opts into a macOS `.app` bundle automatically.
 - **Fixed-Size HUD**: The ImGui HUD keeps its logical dimensions when the window is resized and uses the window's OS content scale for its font atlas.
 - **Data-Oriented Design**: Flat arrays, plain structs, and persistent scratch buffers to avoid per-frame allocations.
 
-## Build a macOS release image
-
-```sh
-scripts/make_dmg.sh v0.2.0
-```
-
-This creates `dist/EngineV2-v0.2.0.dmg`, containing the versioned `EngineV2.app` bundle, assets, and shaders. The script builds in Release mode and uses available local dependency checkouts when possible. The packaged app loads its assets locally and does not need a network connection at launch.
+For build and packaging instructions, see [Building EngineV2](docs/build.md).
